@@ -55,7 +55,7 @@ This wasn't built in theory. Every agent was tested on real production apps with
 
 ## Questions?
 
-Open an issue on this repo. We respond.
+Open an issue — I respond personally. Usually within 24 hours.
 
 ---
 
