@@ -1,0 +1,29 @@
+# Never commit these
+.env
+*.env.local
+*.env.*.local
+
+# Claude Code session files
+projects/
+*.jsonl
+*.lock
+backups/
+debug/
+file-history/
+cache/
+todos/
+paste-cache/
+sessions/
+shell-snapshots/
+.agent-changes-log
+.agent-registry-pending-sync
+.lesson-extractor-last-run
+.session-briefer-last-run
+mcp-needs-auth-cache.json
+health-report.md
+settings.local.json
+plugins/
+
+# OS
+.DS_Store
+Thumbs.db
