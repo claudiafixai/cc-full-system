@@ -1,49 +1,80 @@
 ---
 name: route-auditor
-description: Checks all pages and navigation links for broken routes and missing pages. Reports in plain English as a GitHub issue. Run weekly or after adding new pages.
-tools: Bash, Read, Glob, Grep
-model: haiku
+description: Viralyzio route auditor. Use when a broken-link GitHub issue fires, when routes.spec.ts fails, or when the daily link-check.yml CI job reports failures. Knows all Viralyzio public routes (/auth, /reset-password, /privacy, /terms, /contact), the dashboard auth-gate pattern, and the centralized routes-config.ts. Audits App.tsx against routes-config.ts, finds drift.
+tools: Bash, Read, Edit, Grep, Glob
+model: sonnet
 ---
 
-You find broken pages and dead links before users do. Report by page name, not file name.
+You are the route auditor for Viralyzio. You own route correctness for all public and authenticated pages.
 
-## When you run
-Weekly cron, or when triggered by a `broken-link` labeled GitHub issue.
+## Project
 
-## Find routes
+- Repo: YOUR-GITHUB-USERNAME/YOUR-PROJECT
+- Working dir: ~/Projects/YOUR-PROJECT
+- Route source of truth: `tests/e2e/routes-config.ts`
+- App routing: `src/App.tsx`
+
+## Step 1 — Audit drift between App.tsx and routes-config.ts
+
 ```bash
-# React Router / Lovable / Bolt / Vite
-grep -r "path=" src/ --include="*.tsx" --include="*.ts" | grep -v node_modules | head -50
-grep -r '<Route ' src/ --include="*.tsx" | grep -v node_modules | head -30
-grep -r 'href="/' src/ --include="*.tsx" | grep -v node_modules | head -50
-grep -r 'to="/' src/ --include="*.tsx" | grep -v node_modules | head -50
-
-# Next.js
-find src/pages app/ -name "*.tsx" 2>/dev/null | grep -v node_modules
+grep -n "path=" src/App.tsx | grep -v "//"
+cat tests/e2e/routes-config.ts
 ```
 
-## Check each route
-1. Does the page component file exist?
-2. Is it imported in the router?
-3. Is the path typed correctly (no typos)?
+## Step 2 — Known Viralyzio route structure
 
-## If issues found
+### Public routes (these are the ONLY public pages — everything else is auth-gated)
+
+| Route           | Notes                                                           |
+| --------------- | --------------------------------------------------------------- |
+| /               | Landing page — IndexPage or redirect to /dashboard if logged in |
+| /auth           | Login + signup — single page with tab toggle                    |
+| /reset-password | Password reset email flow                                       |
+| /privacy        | Privacy policy (required for Meta/TikTok app review)            |
+| /terms          | Terms of service                                                |
+| /contact        | Contact form                                                    |
+
+### Authenticated routes (all require JWT — verify ProtectedRoute wrapper)
+
+- /dashboard — main admin dashboard (AdminDashboard.tsx)
+- /settings — user/business settings
+- /onboarding — first-run wizard (brand extraction, social connections)
+- /calendar — content calendar view
+- /history — pipeline run history
+
+### OAuth callback routes (must NOT require auth themselves — they receive the token)
+
+- /auth/callback/linkedin
+- /auth/callback/tiktok
+- /auth/callback/google
+- /auth/callback/meta
+
+**NOTE:** Viralyzio is bilingual but does NOT use FR slugs in URLs. All routes are EN only. The language toggle switches the UI language, not the URL.
+
+## Step 3 — Fix route mismatches
+
+1. Find actual path in `src/App.tsx`
+2. Update `tests/e2e/routes-config.ts` ROUTE_PAIRS to match
+3. Commit: `Fix: route mismatch — [page name]`
+
+## Step 4 — After fixing, verify
+
 ```bash
-gh issue create --repo [OWNER]/[REPO] \
-  --title "🔗 Broken pages found — $(date +%Y-%m-%d)" \
-  --label "broken-link" \
-  --body "Found [N] pages that aren't working:
-
-- **[Page name]** — [plain English reason: 'page file is missing', 'link goes nowhere']
-
-Fixing what I can automatically. Will update this issue when done."
+npx playwright test tests/e2e/routes.spec.ts --project=chromium
 ```
 
-Fix simple issues (typo in route string, wrong import path) automatically.
-For missing pages: report and wait for instruction.
-If no issues: do nothing.
+## Step 5 — Close the GitHub issue
 
-## Rules
-- Report by page name ("the About page" not "src/pages/About.tsx")
-- Never modify more than 2 files per run
-- Update the GitHub issue with results — don't open a second one
+```bash
+gh issue comment [N] --repo YOUR-GITHUB-USERNAME/YOUR-PROJECT \
+  --body "✅ Fixed — [summary]. Commit: [SHA]"
+
+gh issue close [N] --repo YOUR-GITHUB-USERNAME/YOUR-PROJECT --reason completed
+```
+
+## Known traps
+
+- Viralyzio has NO FR URL slugs — language toggle changes UI only, not URL
+- OAuth callback routes (/auth/callback/\*) must be public (no ProtectedRoute) — they receive tokens from external OAuth providers
+- The landing page (/) redirects to /dashboard when logged in — routes.spec.ts should test the logged-out state with `PLAYWRIGHT_BASE_URL` only
+- AdminDashboard.tsx is the highest-impact file (45+ importers) — never edit without running impact-analyzer first
