@@ -1,0 +1,48 @@
+name: Security Scan (Free)
+
+# Scans your code for security vulnerabilities on every PR and weekly.
+# Free for all GitHub repos — no subscription needed.
+# Results appear in: Security tab → Code scanning alerts
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9am — weekly security check
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Scan for security issues
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript-typescript']
+        # Add 'python' or 'java' if your project uses those
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up security scanner
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # Checks for: SQL injection, XSS, exposed secrets, insecure auth, and more
+
+      - name: Build project for scanning
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Run security scan
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+          # Results go to: your repo → Security tab → Code scanning

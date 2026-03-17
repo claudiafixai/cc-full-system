@@ -1,0 +1,58 @@
+name: Auto-create PR
+
+on:
+  push:
+    branches: [development]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ensure-pr:
+    name: Ensure PR exists for development → main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create or update PR
+        env:
+          # BOT_PAT lets BugBot + CodeRabbit auto-trigger on PRs.
+          # Create one at github.com/settings/tokens → Fine-grained tokens
+          # Add as repo secret named BOT_PAT.
+          # Falls back to GITHUB_TOKEN if BOT_PAT not set (BugBot won't auto-trigger without it).
+          GH_TOKEN: ${{ secrets.BOT_PAT || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          EXISTING=$(gh pr list \
+            --repo "$REPO" \
+            --base main \
+            --head development \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty' 2>/dev/null || echo "")
+
+          COMMITS=$(git log origin/main..HEAD --oneline --no-merges 2>/dev/null || true)
+          if [ -z "$COMMITS" ]; then COUNT=0; else COUNT=$(echo "$COMMITS" | grep -c "." 2>/dev/null || echo 0); fi
+
+          NL=$'\n'
+          BODY="## Updates ready to ship ($COUNT commits)${NL}${NL}Review and merge to push these changes to your live site.${NL}${NL}---${NL}## Before merging${NL}- [ ] deploy-advisor shows ✅ GO${NL}- [ ] pr-explainer has explained what changed${NL}- [ ] No open issues that should be fixed first"
+
+          TMPFILE=$(mktemp)
+          printf '%s' "$BODY" > "$TMPFILE"
+
+          if [ -z "$EXISTING" ]; then
+            gh pr create \
+              --repo "$REPO" \
+              --base main \
+              --head development \
+              --title "Updates ready to ship ($COUNT commits)" \
+              --body-file "$TMPFILE"
+          else
+            gh pr edit "$EXISTING" \
+              --repo "$REPO" \
+              --body-file "$TMPFILE"
+          fi
+          rm -f "$TMPFILE"

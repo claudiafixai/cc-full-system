@@ -1,0 +1,269 @@
+name: Auto-Fix Issue
+
+# When you label a GitHub issue with "auto-fix", this workflow:
+# 1. Reads the issue description
+# 2. Calls Claude AI to find and fix the bug
+# 3. Commits the fix to your development branch
+# 4. Posts a plain-English explanation on the issue
+#
+# Requirements:
+# - Add ANTHROPIC_API_KEY as a repo secret (get one at console.anthropic.com)
+# - Settings → Secrets and variables → Actions → New secret → ANTHROPIC_API_KEY
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  auto-fix:
+    name: Fix bug with Claude AI
+    runs-on: ubuntu-latest
+
+    # Only run when the label added is exactly "auto-fix"
+    if: github.event.label.name == 'auto-fix'
+
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+        with:
+          ref: development
+          fetch-depth: 0
+
+      - name: Set up Python (for Claude API call)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Claude SDK
+        run: pip install anthropic --quiet
+
+      - name: Post "working on it" comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh issue comment "$ISSUE" --repo "$REPO" \
+            --body "🔧 Working on this — Claude AI is reading the code now. Will post a fix shortly."
+
+      - name: Run Claude AI fix
+        id: fix
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 << 'PYEOF'
+          import os, json, re, sys
+          import anthropic
+
+          issue_number = os.environ['ISSUE_NUMBER']
+          issue_title = os.environ['ISSUE_TITLE']
+          issue_body = os.environ.get('ISSUE_BODY', '') or ''
+
+          # Read project context files
+          def read_file(path, max_chars=3000):
+              try:
+                  with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                      return f.read()[:max_chars]
+              except:
+                  return ''
+
+          claude_md = read_file('CLAUDE.md')
+          traps = read_file('docs/CC_TRAPS.md', 1000)
+          known = read_file('docs/KNOWN_ISSUES.md', 1000)
+          feature_status = read_file('docs/FEATURE_STATUS.md', 1000)
+
+          # Find file mentions in the issue
+          file_patterns = re.findall(
+              r'(?:src/|app/|pages/|components/|lib/|utils/|hooks/|types/)'
+              r'[^\s`"\'\)\(]+\.(?:tsx?|jsx?|css|scss|json)',
+              issue_body
+          )
+
+          file_contents = {}
+          for fp in file_patterns[:3]:
+              content = read_file(fp)
+              if content:
+                  file_contents[fp] = content
+
+          # Build files section
+          files_section = ''
+          if file_contents:
+              files_section = '\n\nFiles mentioned in the issue:\n'
+              for path, content in file_contents.items():
+                  files_section += f'\n### {path}\n```\n{content}\n```\n'
+
+          prompt = f"""You are fixing a bug in a web application. Analyze the issue and provide a minimal fix.
+
+ISSUE #{issue_number}: {issue_title}
+
+DESCRIPTION:
+{issue_body}
+
+PROJECT CONTEXT (CLAUDE.md):
+{claude_md}
+
+KNOWN TRAPS TO AVOID:
+{traps}
+
+KNOWN ISSUES (do not re-fix these):
+{known}
+
+PROTECTED FEATURES (do not touch):
+{feature_status}
+{files_section}
+
+Your task: Find the minimal fix for this issue — maximum 1 file changed.
+
+Respond with ONLY a valid JSON object, no other text:
+{{
+  "can_fix": true,
+  "confidence": "high",
+  "file_path": "src/path/to/file.tsx",
+  "fixed_content": "COMPLETE file content here — not just the changed lines, the whole file",
+  "explanation_for_owner": "Plain English: what was broken and what you changed. No technical jargon. Max 2 sentences.",
+  "what_users_will_notice": "One sentence: what the user will see differently after this fix."
+}}
+
+If you cannot fix it in 1 file, or cannot identify the bug, respond with:
+{{
+  "can_fix": false,
+  "reason": "Plain English explanation of why you can't auto-fix this."
+}}
+
+Rules:
+- fixed_content must be the COMPLETE file, not a diff or partial
+- Never touch files in supabase/migrations/
+- Never modify features marked as DONE in FEATURE_STATUS.md unless the issue is specifically about them
+- If confidence is low, set can_fix to false
+"""
+
+          client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+
+          try:
+              response = client.messages.create(
+                  model='claude-haiku-4-5-20251001',
+                  max_tokens=8192,
+                  messages=[{'role': 'user', 'content': prompt}]
+              )
+
+              result_text = response.content[0].text.strip()
+
+              # Extract JSON
+              json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+              if not json_match:
+                  print('RESULT=cannot_parse')
+                  with open(os.environ.get('GITHUB_ENV', '/dev/null'), 'a') as f:
+                      f.write('FIX_RESULT=cannot_parse\n')
+                  sys.exit(0)
+
+              result = json.loads(json_match.group())
+
+              # Save result for next steps
+              with open('_fix_result.json', 'w') as f:
+                  json.dump(result, f)
+
+              env_file = os.environ.get('GITHUB_ENV', '/dev/null')
+              with open(env_file, 'a') as f:
+                  if result.get('can_fix'):
+                      f.write('FIX_RESULT=success\n')
+                      f.write(f"FIX_FILE={result['file_path']}\n")
+                      explanation = result.get('explanation_for_owner', '').replace('\n', ' ')
+                      f.write(f"FIX_EXPLANATION={explanation}\n")
+                      what_notice = result.get('what_users_will_notice', '').replace('\n', ' ')
+                      f.write(f"FIX_USERS_NOTICE={what_notice}\n")
+                  else:
+                      f.write('FIX_RESULT=cannot_fix\n')
+                      reason = result.get('reason', 'Could not determine the fix automatically.').replace('\n', ' ')
+                      f.write(f"FIX_REASON={reason}\n")
+
+          except Exception as e:
+              env_file = os.environ.get('GITHUB_ENV', '/dev/null')
+              with open(env_file, 'a') as f:
+                  f.write('FIX_RESULT=error\n')
+              print(f'Error: {e}')
+          PYEOF
+
+      - name: Apply the fix
+        if: env.FIX_RESULT == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Read the fix result
+          FILE_PATH=$(python3 -c "import json; r=json.load(open('_fix_result.json')); print(r['file_path'])")
+          CONTENT=$(python3 -c "import json; r=json.load(open('_fix_result.json')); print(r['fixed_content'])")
+
+          # Safety checks
+          if echo "$FILE_PATH" | grep -q "supabase/migrations"; then
+            echo "Safety: refusing to touch migration files"
+            exit 1
+          fi
+
+          if [ ! -f "$FILE_PATH" ]; then
+            echo "File $FILE_PATH does not exist — cannot apply fix"
+            echo "FIX_RESULT=file_not_found" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          # Apply the fix
+          echo "$CONTENT" > "$FILE_PATH"
+
+          # Commit to development branch
+          git config user.name "Auto-Fix Bot"
+          git config user.email "autofix@github-actions"
+          git add "$FILE_PATH"
+          git commit -m "Fix: ${{ github.event.issue.title }}
+
+Auto-fixed by Claude AI.
+Issue: $REPO#$ISSUE
+
+Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"
+          git push origin development
+
+      - name: Comment — fix applied
+        if: env.FIX_RESULT == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh issue comment "$ISSUE" --repo "$REPO" --body "✅ Fixed
+
+**What was wrong:** ${{ env.FIX_EXPLANATION }}
+
+**What your users will notice:** ${{ env.FIX_USERS_NOTICE }}
+
+The fix is in your **development** branch. A pull request will be created automatically — check deploy-advisor before merging to your live site."
+          gh issue edit "$ISSUE" --repo "$REPO" --add-label "auto-fixed"
+
+      - name: Comment — cannot auto-fix
+        if: env.FIX_RESULT == 'cannot_fix' || env.FIX_RESULT == 'error' || env.FIX_RESULT == 'cannot_parse' || env.FIX_RESULT == 'file_not_found'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          REASON="${{ env.FIX_REASON }}"
+          if [ -z "$REASON" ]; then
+            REASON="This bug requires changes to more than one file, or the exact file could not be identified automatically."
+          fi
+
+          gh issue comment "$ISSUE" --repo "$REPO" --body "⚠️ Could not auto-fix this one
+
+$REASON
+
+**What to do:**
+- If you use Lovable: share this issue URL with Lovable and ask it to fix the problem
+- If you use Claude Code: open a CC session and say 'fix issue #$ISSUE'
+- Or describe the bug in more detail (which page, what exactly happens) and re-add the \`auto-fix\` label"
+          gh issue edit "$ISSUE" --repo "$REPO" --remove-label "auto-fix"

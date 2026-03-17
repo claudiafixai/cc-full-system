@@ -1,0 +1,32 @@
+name: Claude BugBot
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  bugbot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip for bots
+        if: github.actor == 'dependabot[bot]' || github.actor == 'github-actions[bot]'
+        run: echo "Bot PR — BugBot review not required"
+
+      - uses: actions/checkout@v4
+        if: github.actor != 'dependabot[bot]' && github.actor != 'github-actions[bot]'
+
+      - uses: rekpero/claude-bugbot-github-action@v1.0.6
+        if: github.actor != 'dependabot[bot]' && github.actor != 'github-actions[bot]'
+        with:
+          claude-setup-token: ${{ secrets.CLAUDE_SETUP_TOKEN }}
+          # Get your token: claude.ai/settings → Claude Code → copy Setup Token
+          # Add as repo secret: Settings → Secrets → New secret → CLAUDE_SETUP_TOKEN

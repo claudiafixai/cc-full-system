@@ -1,0 +1,92 @@
+name: Auto-label issues
+
+# When you write an issue in plain English (from your phone or anywhere),
+# this workflow reads it and automatically applies the right labels.
+# Claude AI classifies the issue — no manual labeling needed.
+#
+# Requirements:
+# - Add ANTHROPIC_API_KEY as a repo secret
+# - Settings → Secrets and variables → Actions → New secret → ANTHROPIC_API_KEY
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  auto-label:
+    runs-on: ubuntu-latest
+    # Skip if the issue was already opened by an automated system
+    if: >
+      !contains(github.event.issue.labels.*.name, 'automated') &&
+      github.event.issue.user.login != 'github-actions[bot]'
+    permissions:
+      issues: write
+    steps:
+      - name: Classify issue and apply labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          TITLE=$(echo '${{ github.event.issue.title }}' | head -c 200)
+          BODY=$(echo '${{ github.event.issue.body }}' | head -c 800)
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          REPO="${{ github.repository }}"
+
+          cat > /tmp/prompt.txt << 'PROMPTEOF'
+Read the issue title and body below. Return a JSON array of the most relevant labels.
+Pick 1-3 labels maximum. Only return labels from this exact list.
+
+LABEL REFERENCE:
+- "bug" — something is broken, not working, error, crash
+- "enhancement" — improvement to existing feature
+- "feature-request" — request to add new functionality
+- "question" — asking for information, how does something work
+- "ux-fix" — UI is confusing, hard to use, bad experience
+- "copy-update" — text/wording needs to change
+- "security" — security concern, data exposed
+- "performance" — slow, loading takes too long
+- "idea" — new product idea, brainstorm, what if we...
+
+Return ONLY a valid JSON array like: ["bug", "ux-fix"]
+No explanation, no markdown, just the JSON array.
+PROMPTEOF
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$(jq -n \
+              --arg title "$TITLE" \
+              --arg body "$BODY" \
+              --rawfile prompt /tmp/prompt.txt \
+              '{
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 100,
+                messages: [{"role": "user", "content": ($prompt + "\n\nISSUE TITLE: " + $title + "\n\nISSUE BODY: " + $body)}]
+              }')")
+
+          LABELS_JSON=$(echo "$RESPONSE" | jq -r '.content[0].text // "[]"' | tr -d '\n' | grep -o '\[.*\]' | head -1)
+
+          if [ -z "$LABELS_JSON" ] || [ "$LABELS_JSON" = "[]" ]; then
+            gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --add-label "triage" 2>/dev/null || true
+            exit 0
+          fi
+
+          echo "$LABELS_JSON" | jq -r '.[]' | while IFS= read -r label; do
+            if [ -n "$label" ]; then
+              gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --add-label "$label" 2>/dev/null || true
+            fi
+          done
+
+          FIRST_LABEL=$(echo "$LABELS_JSON" | jq -r '.[0] // ""')
+          case "$FIRST_LABEL" in
+            "bug") NEXT="Claude AI will attempt to fix this automatically when you add the **auto-fix** label." ;;
+            "idea"|"feature-request") NEXT="This will be reviewed and prioritized in the next session." ;;
+            "question") NEXT="Someone will answer this shortly." ;;
+            *) NEXT="This has been labeled and will be reviewed." ;;
+          esac
+
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPO" \
+            --body "🏷️ **Auto-labeled:** \`$(echo "$LABELS_JSON" | jq -r 'join("`, `")')\`
+
+**What happens next:** $NEXT" 2>/dev/null || true
