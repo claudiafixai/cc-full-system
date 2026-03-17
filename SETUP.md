@@ -117,7 +117,7 @@ If you see a health briefing, everything is working.
 |---|---|
 | `/start` | Start of day briefing — shows everything broken, what to fix first |
 | `/improve` | End of session — captures everything learned, commits it |
-| `/start` | Quick health check mid-session |
+| `/improve` | End of session — captures everything learned, commits it |
 
 ---
 
