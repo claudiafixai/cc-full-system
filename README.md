@@ -27,13 +27,19 @@ This is the complete AI operating system for your projects — 105 specialists a
 
 ## Quick install
 
-**Full instructions in [SETUP.md](SETUP.md) — 30 minutes, no terminal experience required.**
+**Full instructions in [SETUP.md](SETUP.md).**
 
-Short version:
-1. Download this repo as a ZIP
-2. Copy `agents/`, `hooks/`, `skills/` into `~/.claude/`
-3. Replace `YOUR-PROJECT-1` etc. with your actual project names
-4. Open Claude Code and type `run session-commander`
+```bash
+# 1. Download and unzip this repo, then:
+bash install.sh
+```
+
+That's it. The installer copies everything, asks for your project names, and sets up your `.env` file. Takes 2 minutes.
+
+Then for each of your GitHub repos:
+```bash
+bash setup-github-labels.sh YOUR-USERNAME/YOUR-REPO
+```
 
 ---
 
@@ -60,3 +66,4 @@ Open an issue — I respond personally. Usually within 24 hours.
 ---
 
 *Requires [Claude Code](https://claude.ai/code). Works with any GitHub project.*
+
