@@ -18,7 +18,7 @@ See the full agent list in `agents/` folder.
 
 **Start of day:**
 ```
-run session-commander
+/start
 ```
 
 **End of session:**

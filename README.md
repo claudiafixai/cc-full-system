@@ -46,7 +46,7 @@ bash setup-github-labels.sh YOUR-USERNAME/YOUR-REPO
 ## The 3 commands you'll use every day
 
 ```
-run session-commander   ← start of day briefing
+/start   ← start of day briefing
 /improve                ← end of session, captures everything learned
 /start                  ← mid-session health check
 ```
