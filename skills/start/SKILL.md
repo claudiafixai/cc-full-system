@@ -14,10 +14,10 @@ Recreate all crons from ~/.claude/memory/cron_schedule.md. Create all of them ex
 ## Step 2 — Run dispatcher (clears backlog)
 
 Run the dispatcher agent. It reads ALL open labeled GitHub issues across all 4 repos:
-- claudiafixai/comptago-assistant
-- claudiafixai/spa-mobile
-- claudiafixai/viralyzio
-- claudiafixai/claude-global-config
+- YOUR-GITHUB-USERNAME/YOUR-PROJECT-1
+- YOUR-GITHUB-USERNAME/YOUR-PROJECT-3
+- YOUR-GITHUB-USERNAME/YOUR-PROJECT-2
+- YOUR-GITHUB-USERNAME/YOUR-GLOBAL-CONFIG
 
 This includes GHA-opened trigger issues (inbox-scan, dispatcher-trigger) from overnight.
 Each issue is routed to the correct specialist agent automatically.
@@ -37,9 +37,9 @@ Run the session-commander agent. It:
 After session-commander, run this check for all 3 project repos:
 
 ```bash
-for repo in claudiafixai/comptago-assistant claudiafixai/spa-mobile claudiafixai/viralyzio; do
+for repo in YOUR-GITHUB-USERNAME/YOUR-PROJECT-1 YOUR-GITHUB-USERNAME/YOUR-PROJECT-3 YOUR-GITHUB-USERNAME/YOUR-PROJECT-2; do
   gh pr list --repo $repo --state open --json number,title | jq -r '.[] | .number' | while read n; do
-    RESULT=$(gh api graphql -f query="{repository(owner:\"claudiafixai\",name:\"$(echo $repo | cut -d/ -f2)\"){pullRequest(number:$n){reviewThreads(first:20){nodes{isResolved}}}}}" \
+    RESULT=$(gh api graphql -f query="{repository(owner:\"YOUR-GITHUB-USERNAME\",name:\"$(echo $repo | cut -d/ -f2)\"){pullRequest(number:$n){reviewThreads(first:20){nodes{isResolved}}}}}" \
       | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length')
     CI_PENDING=$(gh pr view $n --repo $repo --json statusCheckRollup --jq '[.statusCheckRollup[] | select(.status=="IN_PROGRESS")] | length')
     CI_FAILED=$(gh pr view $n --repo $repo --json statusCheckRollup --jq '[.statusCheckRollup[] | select(.conclusion=="FAILURE")] | length')

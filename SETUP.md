@@ -1,6 +1,6 @@
 # Setup Guide — CC Full System
 
-**You now have 105 AI specialists. Here's how to activate them in under 30 minutes.**
+**You now have 105 AI specialists. Here's how to activate them in under 2 minutes.**
 
 No terminal knowledge required. Everything is step by step.
 

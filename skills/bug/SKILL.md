@@ -1,6 +1,6 @@
 ---
 name: bug
-description: Instantly log an emergency bug or urgent issue to GitHub so it gets auto-routed to the right agent — even if the terminal is busy. Usage: /bug [description]. Examples: /bug login broken on mobile, /bug comptago stripe webhook failing, /bug spa images not loading
+description: Instantly log an emergency bug or urgent issue to GitHub so it gets auto-routed to the right agent — even if the terminal is busy. Usage: /bug [description]. Examples: /bug login broken on mobile, /bug payments not working, /bug images not loading
 ---
 
 You are logging an emergency issue and enriching it with Sentry context automatically.
@@ -8,10 +8,10 @@ You are logging an emergency issue and enriching it with Sentry context automati
 ## Step 1 — Detect which project
 
 From the description, detect the project:
-- mentions "comptago" / "accounting" / "receipts" / "quickbooks" / "plaid" → `claudiafixai/comptago-assistant`
-- mentions "spa" / "booking" / "salon" / "mobile" → `claudiafixai/spa-mobile`
-- mentions "viralyzio" / "video" / "tiktok" / "clips" → `claudiafixai/viralyzio`
-- unclear → `claudiafixai/claude-global-config`
+- mentions YOUR-PROJECT-1 keywords → `YOUR-GITHUB-USERNAME/YOUR-PROJECT-1`
+- mentions YOUR-PROJECT-3 keywords → `YOUR-GITHUB-USERNAME/YOUR-PROJECT-3`
+- mentions "YOUR-PROJECT-2" / "video" / "tiktok" / "clips" → `YOUR-GITHUB-USERNAME/YOUR-PROJECT-2`
+- unclear → `YOUR-GITHUB-USERNAME/YOUR-GLOBAL-CONFIG`
 
 ## Step 2 — Detect severity
 
@@ -22,9 +22,9 @@ From the description, detect the project:
 ## Step 3 — Query Sentry for related errors (run in parallel with Step 4)
 
 Map project to Sentry project slug:
-- `comptago-assistant` → `comptago`
-- `spa-mobile` → `spa-mobile`
-- `viralyzio` → `viralyzio`
+- `YOUR-PROJECT-1` → `YOUR-PROJECT-1`
+- `YOUR-PROJECT-3` → `YOUR-PROJECT-3`
+- `YOUR-PROJECT-2` → `YOUR-PROJECT-2`
 
 ```bash
 # Load env
@@ -66,7 +66,7 @@ Output only: `✅ Bug logged → [repo]#[N] — [N] Sentry issues attached` (or 
 ## Rules
 - No analysis, no investigation, no questions — just log it
 - Sentry lookup must not delay the issue creation by more than 5 seconds — if slow, skip it
-- If critical: also open in `claudiafixai/claude-global-config` with `critical` label so it surfaces in the next health check
+- If critical: also open in `YOUR-GITHUB-USERNAME/YOUR-GLOBAL-CONFIG` with `critical` label so it surfaces in the next health check
 - Under 15 seconds total (10s + 5s Sentry budget)
 
 ## Trigger words
