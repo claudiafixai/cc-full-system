@@ -135,4 +135,8 @@ If something doesn't work, open an issue on this repo and describe what you see.
 | `hooks/` | 6 lifecycle hooks (auto-trigger agents on events) |
 | `skills/` | 5 slash commands (/improve, /start, /pr, /bug, /health) |
 
+## Guides
+
+- **[CRON-SETUP.md](CRON-SETUP.md)** — How to keep agents running 24/7. Explains the difference between CC session crons (ephemeral) and macOS LaunchAgents (persistent). Required reading if agents stop running when you close Claude Code.
+
 The memory system (`memory/`) is not included — it builds up automatically as you use the system. Each session adds new patterns and learnings specific to your projects.
